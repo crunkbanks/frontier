@@ -341,7 +341,7 @@ fn contract_creation_fails_with_not_allowed_address() {
 				},
 				error: DispatchError::Module(ModuleError {
 					index: 3,
-					error: [13, 0, 0, 0],
+					error: [14, 0, 0, 0],
 					message: Some("CreateOriginNotAllowed")
 				})
 			})
@@ -610,7 +610,7 @@ fn validated_transaction_apply_zero_gas_price_works() {
 			gas_price: U256::zero(),
 			gas_limit: U256::from(21_000),
 			action: ethereum::TransactionAction::Call(bob.address),
-			value: U256::from(100),
+			value: U256::from(100e9 as u128),
 			input: Default::default(),
 		}
 		.sign(&alice.private_key);
@@ -686,7 +686,6 @@ fn proof_size_base_cost_should_keep_the_same_in_execution_and_estimate() {
 			None,
 			raw_tx.value,
 			Some(100),
-			vec![],
 			vec![],
 		);
 		assert_eq!(

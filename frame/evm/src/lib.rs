@@ -69,7 +69,6 @@ pub mod weights;
 
 use alloc::{borrow::Cow, collections::btree_map::BTreeMap, vec::Vec};
 use core::cmp::min;
-use ethereum::AuthorizationList;
 pub use evm::{
 	Config as EvmConfig, Context, ExitError, ExitFatal, ExitReason, ExitRevert, ExitSucceed,
 };
@@ -211,9 +210,13 @@ pub mod pallet {
 		/// Weight information for extrinsics in this pallet.
 		type WeightInfo: WeightInfo;
 
+		/// Balance conversion between Substrate balances and EVM balances
+		#[pallet::no_default]
+		type BalanceConverter: BalanceConverter;
+
 		/// EVM config used in the module.
 		fn config() -> &'static EvmConfig {
-			&PECTRA_CONFIG
+			&CANCUN_CONFIG
 		}
 	}
 
@@ -332,7 +335,6 @@ pub mod pallet {
 			max_priority_fee_per_gas: Option<U256>,
 			nonce: Option<U256>,
 			access_list: Vec<(H160, Vec<H256>)>,
-			authorization_list: AuthorizationList,
 		) -> DispatchResultWithPostInfo {
 			T::CallOrigin::ensure_address_origin(&source, origin)?;
 
@@ -348,7 +350,6 @@ pub mod pallet {
 				max_priority_fee_per_gas,
 				nonce,
 				access_list,
-				authorization_list,
 				is_transactional,
 				validate,
 				None,
@@ -410,10 +411,11 @@ pub mod pallet {
 			max_priority_fee_per_gas: Option<U256>,
 			nonce: Option<U256>,
 			access_list: Vec<(H160, Vec<H256>)>,
-			authorization_list: AuthorizationList,
 		) -> DispatchResultWithPostInfo {
 			T::CallOrigin::ensure_address_origin(&source, origin)?;
 
+			let whitelist = <WhitelistedCreators<T>>::get();
+			let whitelist_disabled = <DisableWhitelistCheck<T>>::get();
 			let is_transactional = true;
 			let validate = true;
 			let info = match T::Runner::create(
@@ -425,7 +427,8 @@ pub mod pallet {
 				max_priority_fee_per_gas,
 				nonce,
 				access_list,
-				authorization_list,
+				whitelist,
+				whitelist_disabled,
 				is_transactional,
 				validate,
 				None,
@@ -499,10 +502,11 @@ pub mod pallet {
 			max_priority_fee_per_gas: Option<U256>,
 			nonce: Option<U256>,
 			access_list: Vec<(H160, Vec<H256>)>,
-			authorization_list: AuthorizationList,
 		) -> DispatchResultWithPostInfo {
 			T::CallOrigin::ensure_address_origin(&source, origin)?;
 
+			let whitelist = <WhitelistedCreators<T>>::get();
+			let whitelist_disabled = <DisableWhitelistCheck<T>>::get();
 			let is_transactional = true;
 			let validate = true;
 			let info = match T::Runner::create2(
@@ -515,7 +519,8 @@ pub mod pallet {
 				max_priority_fee_per_gas,
 				nonce,
 				access_list,
-				authorization_list,
+				whitelist,
+				whitelist_disabled,
 				is_transactional,
 				validate,
 				None,
@@ -571,6 +576,26 @@ pub mod pallet {
 				pays_fee: Pays::No,
 			})
 		}
+
+		#[pallet::call_index(4)]
+		#[pallet::weight(T::DbWeight::get().writes(1))]
+		pub fn set_whitelist(origin: OriginFor<T>, new: Vec<H160>) -> DispatchResult {
+			ensure_root(origin)?;
+
+			<WhitelistedCreators<T>>::put(new);
+
+			Ok(())
+		}
+
+		#[pallet::call_index(5)]
+		#[pallet::weight(T::DbWeight::get().writes(1))]
+		pub fn disable_whitelist(origin: OriginFor<T>, disabled: bool) -> DispatchResult {
+			ensure_root(origin)?;
+
+			<DisableWhitelistCheck<T>>::put(disabled);
+
+			Ok(())
+		}
 	}
 
 	#[pallet::event]
@@ -616,6 +641,8 @@ pub mod pallet {
 		TransactionMustComeFromEOA,
 		/// Undefined error.
 		Undefined,
+		/// Origin is not allowed to perform the operation.
+		NotAllowed,
 		/// Address not allowed to deploy contracts either via CREATE or CALL(CREATE).
 		CreateOriginNotAllowed,
 	}
@@ -633,8 +660,6 @@ pub mod pallet {
 				TransactionValidationError::InvalidFeeInput => Error::<T>::GasPriceTooLow,
 				TransactionValidationError::InvalidChainId => Error::<T>::InvalidChainId,
 				TransactionValidationError::InvalidSignature => Error::<T>::InvalidSignature,
-				TransactionValidationError::EmptyAuthorizationList => Error::<T>::Undefined,
-				TransactionValidationError::AuthorizationListTooLarge => Error::<T>::Undefined,
 				TransactionValidationError::UnknownError => Error::<T>::Undefined,
 			}
 		}
@@ -644,6 +669,7 @@ pub mod pallet {
 	#[derive(frame_support::DefaultNoBound)]
 	pub struct GenesisConfig<T> {
 		pub accounts: BTreeMap<H160, GenesisAccount>,
+		pub whitelisted: Vec<H160>,
 		#[serde(skip)]
 		pub _marker: PhantomData<T>,
 	}
@@ -679,6 +705,8 @@ pub mod pallet {
 					<AccountStorages<T>>::insert(address, index, value);
 				}
 			}
+
+			<WhitelistedCreators<T>>::put(self.whitelisted.clone());
 		}
 	}
 
@@ -692,6 +720,12 @@ pub mod pallet {
 	#[pallet::storage]
 	pub type AccountStorages<T: Config> =
 		StorageDoubleMap<_, Blake2_128Concat, H160, Blake2_128Concat, H256, H256, ValueQuery>;
+
+	#[pallet::storage]
+	pub type WhitelistedCreators<T: Config> = StorageValue<_, Vec<H160>, ValueQuery>;
+
+	#[pallet::storage]
+	pub type DisableWhitelistCheck<T: Config> = StorageValue<_, bool, ValueQuery>;
 }
 
 /// Utility alias for easy access to the [`AccountProvider::AccountId`] type from a given config.
@@ -720,7 +754,7 @@ pub struct CodeMetadata {
 }
 
 impl CodeMetadata {
-	pub fn from_code(code: &[u8]) -> Self {
+	fn from_code(code: &[u8]) -> Self {
 		let size = code.len() as u64;
 		let hash = H256::from(sp_io::hashing::keccak_256(code));
 
@@ -943,7 +977,7 @@ where
 	}
 }
 
-static PECTRA_CONFIG: EvmConfig = EvmConfig::pectra();
+static CANCUN_CONFIG: EvmConfig = EvmConfig::cancun();
 
 impl<T: Config> Pallet<T> {
 	/// Check whether an account is empty.
@@ -1040,11 +1074,15 @@ impl<T: Config> Pallet<T> {
 		let nonce = T::AccountProvider::account_nonce(&account_id);
 		let balance =
 			T::Currency::reducible_balance(&account_id, Preservation::Preserve, Fortitude::Polite);
+		let balance_sub =
+			SubstrateBalance::from(UniqueSaturatedInto::<u128>::unique_saturated_into(balance));
+		let balance_eth =
+			T::BalanceConverter::into_evm_balance(balance_sub).unwrap_or(EvmBalance::from(0u64));
 
 		(
 			Account {
 				nonce: U256::from(UniqueSaturatedInto::<u128>::unique_saturated_into(nonce)),
-				balance: U256::from(UniqueSaturatedInto::<u128>::unique_saturated_into(balance)),
+				balance: balance_eth.into(),
 			},
 			T::DbWeight::get().reads(2),
 		)
@@ -1066,7 +1104,7 @@ pub trait OnChargeEVMTransaction<T: Config> {
 
 	/// Before the transaction is executed the payment of the transaction fees
 	/// need to be secured.
-	fn withdraw_fee(who: &H160, fee: U256) -> Result<Self::LiquidityInfo, Error<T>>;
+	fn withdraw_fee(who: &H160, fee: EvmBalance) -> Result<Self::LiquidityInfo, Error<T>>;
 
 	/// After the transaction was executed the actual fee can be calculated.
 	/// This function should refund any overpaid fees and optionally deposit
@@ -1075,8 +1113,8 @@ pub trait OnChargeEVMTransaction<T: Config> {
 	/// Returns the `NegativeImbalance` - if any - produced by the priority fee.
 	fn correct_and_deposit_fee(
 		who: &H160,
-		corrected_fee: U256,
-		base_fee: U256,
+		corrected_fee: EvmBalance,
+		base_fee: EvmBalance,
 		already_withdrawn: Self::LiquidityInfo,
 	) -> Self::LiquidityInfo;
 
@@ -1104,34 +1142,44 @@ where
 	// Kept type as Option to satisfy bound of Default
 	type LiquidityInfo = Option<NegativeImbalanceOf<C, T>>;
 
-	fn withdraw_fee(who: &H160, fee: U256) -> Result<Self::LiquidityInfo, Error<T>> {
-		if fee.is_zero() {
+	fn withdraw_fee(who: &H160, fee: EvmBalance) -> Result<Self::LiquidityInfo, Error<T>> {
+		if fee.0.is_zero() {
 			return Ok(None);
 		}
 		let account_id = T::AddressMapping::into_account_id(*who);
+
+		// Recalculate fee decimals using BalanceConverter
+		let fee_sub =
+			T::BalanceConverter::into_substrate_balance(fee).ok_or(Error::<T>::FeeOverflow)?;
+
 		let imbalance = C::withdraw(
 			&account_id,
-			fee.unique_saturated_into(),
+			fee_sub.0.unique_saturated_into(),
 			WithdrawReasons::FEE,
 			ExistenceRequirement::AllowDeath,
 		)
 		.map_err(|_| Error::<T>::BalanceLow)?;
-		Ok(Some(imbalance))
+		Ok(Some(imbalance)) // Returns substrate balance
 	}
 
 	fn correct_and_deposit_fee(
 		who: &H160,
-		corrected_fee: U256,
-		base_fee: U256,
-		already_withdrawn: Self::LiquidityInfo,
+		corrected_fee: EvmBalance,
+		base_fee: EvmBalance,
+		already_withdrawn: Self::LiquidityInfo, // Expects substrate balance
 	) -> Self::LiquidityInfo {
 		if let Some(paid) = already_withdrawn {
 			let account_id = T::AddressMapping::into_account_id(*who);
 
+			// Convert corrected fee into substrate balance
+			let corrected_fee_sub = T::BalanceConverter::into_substrate_balance(corrected_fee)
+				.unwrap_or(SubstrateBalance::from(0u64));
+
 			// Calculate how much refund we should return
 			let refund_amount = paid
 				.peek()
-				.saturating_sub(corrected_fee.unique_saturated_into());
+				.saturating_sub(corrected_fee_sub.0.unique_saturated_into());
+
 			// refund to the account that paid the fees. If this fails, the
 			// account might have dropped below the existential balance. In
 			// that case we don't refund anything.
@@ -1162,15 +1210,20 @@ where
 				.same()
 				.unwrap_or_else(|_| C::NegativeImbalance::zero());
 
-			let (base_fee, tip) = adjusted_paid.split(base_fee.unique_saturated_into());
+			// Convert base fee into substrate balance
+			let base_fee_sub = T::BalanceConverter::into_substrate_balance(base_fee)
+				.unwrap_or(SubstrateBalance::from(0u64));
+
+			let (base_fee, tip) = adjusted_paid.split(base_fee_sub.0.unique_saturated_into());
 			// Handle base fee. Can be either burned, rationed, etc ...
 			OU::on_unbalanced(base_fee);
-			return Some(tip);
+			return Some(tip); // Returns substrate balance
 		}
 		None
 	}
 
 	fn pay_priority_fee(tip: Self::LiquidityInfo) {
+		// Expects substrate balance
 		// Default Ethereum behaviour: issue the tip to the block author.
 		if let Some(tip) = tip {
 			let account_id = T::AddressMapping::into_account_id(<Pallet<T>>::find_author());
@@ -1196,35 +1249,44 @@ where
 	// Kept type as Option to satisfy bound of Default
 	type LiquidityInfo = Option<Credit<AccountIdOf<T>, F>>;
 
-	fn withdraw_fee(who: &H160, fee: U256) -> Result<Self::LiquidityInfo, Error<T>> {
-		if fee.is_zero() {
+	fn withdraw_fee(who: &H160, fee: EvmBalance) -> Result<Self::LiquidityInfo, Error<T>> {
+		if fee.0.is_zero() {
 			return Ok(None);
 		}
 		let account_id = T::AddressMapping::into_account_id(*who);
+
+		// Recalculate fee decimals using BalanceConverter
+		let fee_sub =
+			T::BalanceConverter::into_substrate_balance(fee).ok_or(Error::<T>::FeeOverflow)?;
+
 		let imbalance = F::withdraw(
 			&account_id,
-			fee.unique_saturated_into(),
+			fee_sub.0.unique_saturated_into(),
 			Precision::Exact,
 			Preservation::Preserve,
 			Fortitude::Polite,
 		)
 		.map_err(|_| Error::<T>::BalanceLow)?;
-		Ok(Some(imbalance))
+		Ok(Some(imbalance)) // Returns substrate balance
 	}
 
 	fn correct_and_deposit_fee(
 		who: &H160,
-		corrected_fee: U256,
-		base_fee: U256,
-		already_withdrawn: Self::LiquidityInfo,
+		corrected_fee: EvmBalance,
+		base_fee: EvmBalance,
+		already_withdrawn: Self::LiquidityInfo, // Expects substrate balance
 	) -> Self::LiquidityInfo {
 		if let Some(paid) = already_withdrawn {
 			let account_id = T::AddressMapping::into_account_id(*who);
 
+			// Convert corrected fee into substrate balance
+			let corrected_fee_sub = T::BalanceConverter::into_substrate_balance(corrected_fee)
+				.unwrap_or(SubstrateBalance::from(0u64));
+
 			// Calculate how much refund we should return
 			let refund_amount = paid
 				.peek()
-				.saturating_sub(corrected_fee.unique_saturated_into());
+				.saturating_sub(corrected_fee_sub.0.unique_saturated_into());
 			// refund to the account that paid the fees.
 			let refund_imbalance = F::deposit(&account_id, refund_amount, Precision::BestEffort)
 				.unwrap_or_else(|_| Debt::<AccountIdOf<T>, F>::zero());
@@ -1235,15 +1297,20 @@ where
 				.same()
 				.unwrap_or_else(|_| Credit::<AccountIdOf<T>, F>::zero());
 
-			let (base_fee, tip) = adjusted_paid.split(base_fee.unique_saturated_into());
+			// Convert base fee into substrate balance
+			let base_fee_sub = T::BalanceConverter::into_substrate_balance(base_fee)
+				.unwrap_or(SubstrateBalance::from(0u64));
+
+			let (base_fee, tip) = adjusted_paid.split(base_fee_sub.0.unique_saturated_into());
 			// Handle base fee. Can be either burned, rationed, etc ...
 			OU::on_unbalanced(base_fee);
-			return Some(tip);
+			return Some(tip); // Returns substrate balance
 		}
 		None
 	}
 
 	fn pay_priority_fee(tip: Self::LiquidityInfo) {
+		// Expects substrate balance
 		// Default Ethereum behaviour: issue the tip to the block author.
 		if let Some(tip) = tip {
 			let account_id = T::AddressMapping::into_account_id(<Pallet<T>>::find_author());
@@ -1262,14 +1329,14 @@ where
 	// Kept type as Option to satisfy bound of Default
 	type LiquidityInfo = Option<Credit<AccountIdOf<T>, T::Currency>>;
 
-	fn withdraw_fee(who: &H160, fee: U256) -> Result<Self::LiquidityInfo, Error<T>> {
+	fn withdraw_fee(who: &H160, fee: EvmBalance) -> Result<Self::LiquidityInfo, Error<T>> {
 		EVMFungibleAdapter::<T::Currency, ()>::withdraw_fee(who, fee)
 	}
 
 	fn correct_and_deposit_fee(
 		who: &H160,
-		corrected_fee: U256,
-		base_fee: U256,
+		corrected_fee: EvmBalance,
+		base_fee: EvmBalance,
 		already_withdrawn: Self::LiquidityInfo,
 	) -> Self::LiquidityInfo {
 		<EVMFungibleAdapter<T::Currency, ()> as OnChargeEVMTransaction<T>>::correct_and_deposit_fee(
@@ -1325,5 +1392,103 @@ impl<T: frame_system::Config> AccountProvider for FrameSystemAccountProvider<T> 
 
 	fn remove_account(who: &Self::AccountId) {
 		let _ = frame_system::Pallet::<T>::dec_sufficients(who);
+	}
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct SubstrateBalance(U256);
+
+impl SubstrateBalance {
+	pub fn new(value: U256) -> Self {
+		SubstrateBalance(value)
+	}
+
+	pub fn into_u256(self) -> U256 {
+		self.0
+	}
+
+	pub fn into_u64_saturating(self) -> u64 {
+		if self.0 > U256::from(u64::MAX) {
+			u64::MAX
+		} else {
+			self.0.as_u64()
+		}
+	}
+}
+
+impl From<u64> for SubstrateBalance {
+	fn from(value: u64) -> Self {
+		SubstrateBalance(U256::from(value))
+	}
+}
+
+impl From<u128> for SubstrateBalance {
+	fn from(value: u128) -> Self {
+		SubstrateBalance(U256::from(value))
+	}
+}
+
+impl From<SubstrateBalance> for U256 {
+	fn from(value: SubstrateBalance) -> Self {
+		value.0
+	}
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct EvmBalance(U256);
+
+impl EvmBalance {
+	pub fn new(value: U256) -> Self {
+		EvmBalance(value)
+	}
+
+	pub fn into_u256(self) -> U256 {
+		self.0
+	}
+
+	pub fn into_u64_saturating(self) -> u64 {
+		if self.0 > U256::from(u64::MAX) {
+			u64::MAX
+		} else {
+			self.0.as_u64()
+		}
+	}
+}
+
+impl From<u64> for EvmBalance {
+	fn from(value: u64) -> Self {
+		EvmBalance(U256::from(value))
+	}
+}
+
+impl From<u128> for EvmBalance {
+	fn from(value: u128) -> Self {
+		EvmBalance(U256::from(value))
+	}
+}
+
+impl From<EvmBalance> for U256 {
+	fn from(value: EvmBalance) -> Self {
+		value.0
+	}
+}
+
+pub trait BalanceConverter {
+	/// Convert from Substrate balance to EVM balance (U256) with correct decimals
+	fn into_evm_balance(value: SubstrateBalance) -> Option<EvmBalance>;
+
+	/// Convert from EVM (U256) balance to Substrate balance with correct decimals
+	fn into_substrate_balance(value: EvmBalance) -> Option<SubstrateBalance>;
+}
+
+impl BalanceConverter for () {
+	fn into_evm_balance(value: SubstrateBalance) -> Option<EvmBalance> {
+		Some(EvmBalance::from(
+			UniqueSaturatedInto::<u128>::unique_saturated_into(value.0),
+		))
+	}
+
+	fn into_substrate_balance(value: EvmBalance) -> Option<SubstrateBalance> {
+		Some(SubstrateBalance(value.0))
 	}
 }

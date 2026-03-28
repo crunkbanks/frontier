@@ -67,11 +67,12 @@ pallet-transaction-payment = { workspace = true }
 
 # Frontier
 fc-api = { workspace = true }
+fc-aura = { workspace = true }
 fc-cli = { workspace = true }
 fc-consensus = { workspace = true }
 fc-db = { workspace = true }
 fc-mapping-sync = { workspace = true }
-fc-rpc = { workspace = true, features = ["aura"] }
+fc-rpc = { workspace = true }
 fc-rpc-core = { workspace = true }
 fc-storage = { workspace = true }
 fp-account = { workspace = true }
@@ -81,6 +82,7 @@ fp-rpc = { workspace = true, features = ["default"] }
 frontier-template-runtime = { workspace = true, features = ["std"] }
 
 # Cumulus primitives
+cumulus-pallet-weight-reclaim = { workspace = true }
 cumulus-primitives-proof-size-hostfunction = { workspace = true }
 
 [build-dependencies]

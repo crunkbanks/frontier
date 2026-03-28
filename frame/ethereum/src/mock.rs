@@ -18,10 +18,7 @@
 //! Test utilities
 
 use core::str::FromStr;
-use ethereum::{
-	eip2930::TransactionSignature as EIP2930TransactionSignature,
-	legacy::TransactionSignature as LegacyTransactionSignature, TransactionAction,
-};
+use ethereum::{TransactionAction, TransactionSignature};
 use rlp::RlpStream;
 // Substrate
 use frame_support::{derive_impl, parameter_types, traits::FindAuthor, ConsensusEngineId};
@@ -31,7 +28,10 @@ use sp_runtime::{
 	AccountId32, BuildStorage,
 };
 // Frontier
-use pallet_evm::{config_preludes::ChainId, AddressMapping, EnsureAllowedCreateAddress};
+use pallet_evm::{
+	config_preludes::ChainId, AddressMapping, BalanceConverter, EnsureAllowedCreateAddress,
+	EvmBalance, SubstrateBalance,
+};
 
 use super::*;
 
@@ -95,9 +95,46 @@ parameter_types! {
 	pub AllowedAddressesCreateInner: Vec<H160> = vec![H160::from_str("0x1a642f0e3c3af545e7acbd38b07251b3990914f1").expect("alice address")];
 }
 
+const EVM_DECIMALS_FACTOR: u64 = 1_000_000_000_u64;
+pub struct SubtensorEvmBalanceConverter;
+
+impl BalanceConverter for SubtensorEvmBalanceConverter {
+	/// Convert from Substrate balance (u64) to EVM balance (U256)
+	fn into_evm_balance(value: SubstrateBalance) -> Option<EvmBalance> {
+		value
+			.into_u256()
+			.checked_mul(U256::from(EVM_DECIMALS_FACTOR))
+			.and_then(|evm_value| {
+				// Ensure the result fits within the maximum U256 value
+				if evm_value <= U256::MAX {
+					Some(EvmBalance::new(evm_value))
+				} else {
+					None
+				}
+			})
+	}
+
+	/// Convert from EVM balance (U256) to Substrate balance (u64)
+	fn into_substrate_balance(value: EvmBalance) -> Option<SubstrateBalance> {
+		value
+			.into_u256()
+			.checked_div(U256::from(EVM_DECIMALS_FACTOR))
+			.and_then(|substrate_value| {
+				// Ensure the result fits within the TAO balance type (u64)
+				if substrate_value <= U256::from(u64::MAX) {
+					Some(SubstrateBalance::new(substrate_value))
+				} else {
+					None
+				}
+			})
+	}
+}
+
 #[derive_impl(pallet_evm::config_preludes::TestDefaultConfig)]
 impl pallet_evm::Config for Test {
 	type AccountProvider = pallet_evm::FrameSystemAccountProvider<Self>;
+	type BalanceConverter = SubtensorEvmBalanceConverter;
+	type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
 	type BlockHashMapping = crate::EthereumBlockHashMapping<Self>;
 	type CreateOriginFilter = EnsureAllowedCreateAddress<AllowedAddressesCreate>;
 	type CreateInnerOriginFilter = EnsureAllowedCreateAddress<AllowedAddressesCreateInner>;
@@ -298,7 +335,7 @@ impl LegacyUnsignedTransaction {
 		);
 		let sig = s.0.serialize();
 
-		let sig = LegacyTransactionSignature::new(
+		let sig = TransactionSignature::new(
 			s.1.serialize() as u64 % 2 + chain_id * 2 + 35,
 			H256::from_slice(&sig[0..32]),
 			H256::from_slice(&sig[32..64]),
@@ -359,7 +396,9 @@ impl EIP2930UnsignedTransaction {
 			value: msg.value,
 			input: msg.input.clone(),
 			access_list: msg.access_list,
-			signature: EIP2930TransactionSignature::new(recid.serialize() != 0, r, s).unwrap(),
+			odd_y_parity: recid.serialize() != 0,
+			r,
+			s,
 		})
 	}
 }
@@ -409,60 +448,9 @@ impl EIP1559UnsignedTransaction {
 			value: msg.value,
 			input: msg.input.clone(),
 			access_list: msg.access_list,
-			signature: EIP2930TransactionSignature::new(recid.serialize() != 0, r, s).unwrap(),
-		})
-	}
-}
-
-pub struct EIP7702UnsignedTransaction {
-	pub nonce: U256,
-	pub max_priority_fee_per_gas: U256,
-	pub max_fee_per_gas: U256,
-	pub gas_limit: U256,
-	pub destination: TransactionAction,
-	pub value: U256,
-	pub data: Vec<u8>,
-	pub authorization_list: Vec<ethereum::AuthorizationListItem>,
-}
-
-impl EIP7702UnsignedTransaction {
-	pub fn sign(&self, secret: &H256, chain_id: Option<u64>) -> Transaction {
-		let secret = {
-			let mut sk: [u8; 32] = [0u8; 32];
-			sk.copy_from_slice(&secret[0..]);
-			libsecp256k1::SecretKey::parse(&sk).unwrap()
-		};
-		let chain_id = chain_id.unwrap_or(ChainId::get());
-		let msg = ethereum::EIP7702TransactionMessage {
-			chain_id,
-			nonce: self.nonce,
-			max_priority_fee_per_gas: self.max_priority_fee_per_gas,
-			max_fee_per_gas: self.max_fee_per_gas,
-			gas_limit: self.gas_limit,
-			destination: self.destination,
-			value: self.value,
-			data: self.data.clone(),
-			access_list: vec![],
-			authorization_list: self.authorization_list.clone(),
-		};
-		let signing_message = libsecp256k1::Message::parse_slice(&msg.hash()[..]).unwrap();
-
-		let (signature, recid) = libsecp256k1::sign(&signing_message, &secret);
-		let rs = signature.serialize();
-		let r = H256::from_slice(&rs[0..32]);
-		let s = H256::from_slice(&rs[32..64]);
-		Transaction::EIP7702(ethereum::EIP7702Transaction {
-			chain_id: msg.chain_id,
-			nonce: msg.nonce,
-			max_priority_fee_per_gas: msg.max_priority_fee_per_gas,
-			max_fee_per_gas: msg.max_fee_per_gas,
-			gas_limit: msg.gas_limit,
-			destination: msg.destination,
-			value: msg.value,
-			data: msg.data.clone(),
-			access_list: msg.access_list,
-			authorization_list: msg.authorization_list,
-			signature: EIP2930TransactionSignature::new(recid.serialize() != 0, r, s).unwrap(),
+			odd_y_parity: recid.serialize() != 0,
+			r,
+			s,
 		})
 	}
 }

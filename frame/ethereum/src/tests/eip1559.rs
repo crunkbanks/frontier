@@ -537,7 +537,7 @@ fn validated_transaction_apply_zero_gas_price_works() {
 			max_fee_per_gas: U256::zero(),
 			gas_limit: U256::from(21_000),
 			action: ethereum::TransactionAction::Call(bob.address),
-			value: U256::from(100),
+			value: U256::from(100e9 as u128),
 			input: Default::default(),
 		}
 		.sign(&alice.private_key, None);
@@ -613,7 +613,6 @@ fn proof_size_base_cost_should_keep_the_same_in_execution_and_estimate() {
 			Some(raw_tx.max_priority_fee_per_gas),
 			raw_tx.value,
 			Some(100),
-			vec![],
 			vec![],
 		);
 		assert_eq!(

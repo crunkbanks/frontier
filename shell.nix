@@ -2,10 +2,10 @@ let
   mozillaOverlay =
     import (builtins.fetchGit {
       url = "https://github.com/mozilla/nixpkgs-mozilla.git";
-      rev = "2292d4b35aa854e312ad2e95c4bb5c293656f21a";
+      rev = "78e723925daf5c9e8d0a1837ec27059e61649cb6";
     });
   nixpkgs = import <nixpkgs> { overlays = [ mozillaOverlay ]; };
-  rust-stable = with nixpkgs; ((rustChannelOf { date = "2025-07-01"; channel = "nightly"; }).rust.override {
+  rust-stable = with nixpkgs; ((rustChannelOf { date = "2024-10-15"; channel = "stable"; }).rust.override {
     extensions = [ "rust-src" ];
     targets = [ "wasm32-unknown-unknown" ];
   });
@@ -19,7 +19,6 @@ with nixpkgs; pkgs.mkShell {
     rocksdb
     pkg-config
     openssl.dev
-    nodejs
   ] ++ lib.optionals stdenv.isDarwin [
     darwin.apple_sdk.frameworks.Security
   ];
@@ -28,6 +27,4 @@ with nixpkgs; pkgs.mkShell {
   LIBCLANG_PATH = "${llvmPackages.libclang.lib}/lib";
   PROTOC = "${protobuf}/bin/protoc";
   ROCKSDB_LIB_DIR = "${rocksdb}/lib";
-  CFLAGS = "-Wno-error=int-conversion";
-  LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib";
 }

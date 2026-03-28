@@ -91,6 +91,9 @@ mod proof_size_test {
 		gas_limit: u64,
 		weight_limit: Option<Weight>,
 	) -> Result<CreateInfo, crate::RunnerError<crate::Error<Test>>> {
+		let whitelist = Vec::new();
+		let whitelist_disabled = true;
+
 		<Test as Config>::Runner::create(
 			H160::default(),
 			hex::decode(PROOF_SIZE_TEST_CALLEE_CONTRACT_BYTECODE.trim_end()).unwrap(),
@@ -100,7 +103,8 @@ mod proof_size_test {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
+			whitelist,
+			whitelist_disabled,
 			true, // transactional
 			true, // must be validated
 			weight_limit,
@@ -113,6 +117,9 @@ mod proof_size_test {
 		gas_limit: u64,
 		weight_limit: Option<Weight>,
 	) -> Result<CreateInfo, crate::RunnerError<crate::Error<Test>>> {
+		let whitelist = Vec::new();
+		let whitelist_disabled = true;
+
 		<Test as Config>::Runner::create(
 			H160::default(),
 			hex::decode(PROOF_SIZE_TEST_CONTRACT_BYTECODE.trim_end()).unwrap(),
@@ -122,7 +129,8 @@ mod proof_size_test {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
+			whitelist,
+			whitelist_disabled,
 			true, // non-transactional
 			true, // must be validated
 			weight_limit,
@@ -225,7 +233,6 @@ mod proof_size_test {
 				None,
 				None,
 				Vec::new(),
-				Vec::new(),
 				true, // transactional
 				true, // must be validated
 				Some(weight_limit),
@@ -282,7 +289,6 @@ mod proof_size_test {
 				None,
 				None,
 				Vec::new(),
-				Vec::new(),
 				true, // transactional
 				true, // must be validated
 				Some(weight_limit),
@@ -338,7 +344,6 @@ mod proof_size_test {
 				None,
 				None,
 				Vec::new(),
-				Vec::new(),
 				true, // transactional
 				true, // must be validated
 				Some(weight_limit),
@@ -387,7 +392,6 @@ mod proof_size_test {
 				Some(FixedGasPrice::min_gas_price().0),
 				None,
 				None,
-				Vec::new(),
 				Vec::new(),
 				true, // transactional
 				true, // must be validated
@@ -442,7 +446,6 @@ mod proof_size_test {
 				Some(FixedGasPrice::min_gas_price().0),
 				None,
 				None,
-				Vec::new(),
 				Vec::new(),
 				true, // transactional
 				true, // must be validated
@@ -499,7 +502,6 @@ mod proof_size_test {
 				Some(FixedGasPrice::min_gas_price().0),
 				None,
 				None,
-				Vec::new(),
 				Vec::new(),
 				true, // transactional
 				true, // must be validated
@@ -560,7 +562,6 @@ mod proof_size_test {
 				None,
 				None,
 				Vec::new(),
-				Vec::new(),
 				true, // transactional
 				true, // must be validated
 				Some(weight_limit),
@@ -602,7 +603,6 @@ mod proof_size_test {
 				None,
 				None,
 				Vec::new(),
-				Vec::new(),
 				true, // transactional
 				true, // must be validated
 				Some(weight_limit),
@@ -642,6 +642,9 @@ mod storage_growth_test {
 		contract: &str,
 		gas_limit: u64,
 	) -> Result<CreateInfo, crate::RunnerError<crate::Error<Test>>> {
+		let whitelist = Vec::new();
+		let whitelist_disabled = true;
+
 		<Test as Config>::Runner::create(
 			H160::default(),
 			hex::decode(contract.trim_end()).expect("Failed to decode contract"),
@@ -651,7 +654,8 @@ mod storage_growth_test {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
+			whitelist,
+			whitelist_disabled,
 			true, // transactional
 			true, // must be validated
 			Some(FixedGasWeightMapping::<Test>::gas_to_weight(
@@ -678,7 +682,6 @@ mod storage_growth_test {
 			Some(FixedGasPrice::min_gas_price().0),
 			None,
 			None,
-			Vec::new(),
 			Vec::new(),
 			true, // transactional
 			true, // must be validated
@@ -958,6 +961,9 @@ fn create_foo_bar_contract_creator(
 	gas_limit: u64,
 	weight_limit: Option<Weight>,
 ) -> Result<CreateInfo, crate::RunnerError<crate::Error<Test>>> {
+	let whitelist = Vec::new();
+	let whitelist_disabled = true;
+
 	<Test as Config>::Runner::create(
 		H160::default(),
 		hex::decode(FOO_BAR_CONTRACT_CREATOR_BYTECODE.trim_end()).unwrap(),
@@ -967,7 +973,8 @@ fn create_foo_bar_contract_creator(
 		None,
 		None,
 		Vec::new(),
-		Vec::new(),
+		whitelist,
+		whitelist_disabled,
 		true, // transactional
 		true, // must be validated
 		weight_limit,
@@ -979,6 +986,8 @@ fn create_foo_bar_contract_creator(
 #[test]
 fn test_contract_deploy_succeeds_if_address_is_allowed() {
 	new_test_ext().execute_with(|| {
+		let whitelist = Vec::new();
+		let whitelist_disabled = true;
 		let gas_limit: u64 = 1_000_000;
 		let weight_limit = FixedGasWeightMapping::<Test>::gas_to_weight(gas_limit, true);
 
@@ -992,7 +1001,8 @@ fn test_contract_deploy_succeeds_if_address_is_allowed() {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
+			whitelist,
+			whitelist_disabled,
 			true, // transactional
 			true, // must be validated
 			Some(weight_limit),
@@ -1006,6 +1016,8 @@ fn test_contract_deploy_succeeds_if_address_is_allowed() {
 #[test]
 fn test_contract_deploy_fails_if_address_not_allowed() {
 	new_test_ext().execute_with(|| {
+		let whitelist = Vec::new();
+		let whitelist_disabled = true;
 		let gas_limit: u64 = 1_000_000;
 		let weight_limit = FixedGasWeightMapping::<Test>::gas_to_weight(gas_limit, true);
 
@@ -1019,7 +1031,8 @@ fn test_contract_deploy_fails_if_address_not_allowed() {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
+			whitelist,
+			whitelist_disabled,
 			true, // transactional
 			true, // must be validated
 			Some(weight_limit),
@@ -1057,7 +1070,6 @@ fn test_inner_contract_deploy_succeeds_if_address_is_allowed() {
 			Some(FixedGasPrice::min_gas_price().0),
 			None,
 			None,
-			Vec::new(),
 			Vec::new(),
 			true, // transactional
 			true, // must be validated
@@ -1097,7 +1109,6 @@ fn test_inner_contract_deploy_reverts_if_address_not_allowed() {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
 			true, // transactional
 			true, // must be validated
 			Some(weight_limit),
@@ -1124,7 +1135,6 @@ fn fail_call_return_ok() {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
 		));
 
 		assert_ok!(EVM::call(
@@ -1138,11 +1148,11 @@ fn fail_call_return_ok() {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
 		));
 	});
 }
 
+// cargo test --package pallet-evm --lib -- tests::fee_deduction --exact --show-output
 #[test]
 fn fee_deduction() {
 	new_test_ext().execute_with(|| {
@@ -1155,12 +1165,12 @@ fn fee_deduction() {
 		assert_eq!(Balances::free_balance(&substrate_addr), 100);
 
 		// Deduct fees as 10 units
-		let imbalance = <<Test as Config>::OnChargeTransaction as OnChargeEVMTransaction<Test>>::withdraw_fee(&evm_addr, U256::from(10)).unwrap();
+		let imbalance = <<Test as Config>::OnChargeTransaction as OnChargeEVMTransaction<Test>>::withdraw_fee(&evm_addr, EvmBalance::from(10e9 as u128)).unwrap();
 		assert_eq!(Balances::free_balance(&substrate_addr), 90);
 
 		// Refund fees as 5 units
-		<<Test as Config>::OnChargeTransaction as OnChargeEVMTransaction<Test>>::correct_and_deposit_fee(&evm_addr, U256::from(5), U256::from(5), imbalance);
-		assert_eq!(Balances::free_balance(&substrate_addr), 95);
+		<<Test as Config>::OnChargeTransaction as OnChargeEVMTransaction<Test>>::correct_and_deposit_fee(&evm_addr, EvmBalance::from(5e9 as u128), EvmBalance::from(5e9 as u128), imbalance);
+		assert_eq!(Balances::free_balance(substrate_addr), 95);
 	});
 }
 
@@ -1172,8 +1182,8 @@ fn ed_0_refund_patch_works() {
 		let evm_addr = H160::from_str("1000000000000000000000000000000000000003").unwrap();
 		let substrate_addr = <Test as Config>::AddressMapping::into_account_id(evm_addr);
 
-		let _ = <Test as Config>::Currency::deposit_creating(&substrate_addr, 21_777_000_000_000);
-		assert_eq!(Balances::free_balance(&substrate_addr), 21_777_000_000_000);
+		let _ = <Test as Config>::Currency::deposit_creating(&substrate_addr, 21_777);
+		assert_eq!(Balances::free_balance(&substrate_addr), 21_777);
 
 		let _ = EVM::call(
 			RuntimeOrigin::root(),
@@ -1186,10 +1196,9 @@ fn ed_0_refund_patch_works() {
 			None,
 			Some(U256::from(0)),
 			Vec::new(),
-			Vec::new(),
 		);
 		// All that was due, was refunded.
-		assert_eq!(Balances::free_balance(&substrate_addr), 776_000_000_000);
+		assert_eq!(Balances::free_balance(&substrate_addr), 776);
 	});
 }
 
@@ -1208,7 +1217,7 @@ fn ed_0_refund_patch_is_required() {
 		let _ =
 			<<Test as Config>::OnChargeTransaction as OnChargeEVMTransaction<Test>>::withdraw_fee(
 				&evm_addr,
-				U256::from(100),
+				EvmBalance::from(100e9 as u128),
 			)
 			.unwrap();
 		assert_eq!(Balances::free_balance(&substrate_addr), 0);
@@ -1254,7 +1263,10 @@ fn reducible_balance() {
 		Balances::set_lock(lock_id, &account_id, to_lock, WithdrawReasons::RESERVE);
 		// Reducible is, as currently configured in `account_basic`, (balance - lock - existential).
 		let reducible_balance = EVM::account_basic(&evm_addr).0.balance;
-		assert_eq!(reducible_balance, (genesis_balance - to_lock - existential));
+		assert_eq!(
+			reducible_balance,
+			(genesis_balance - (to_lock + existential) * 1e9 as u64)
+		);
 	});
 }
 
@@ -1271,14 +1283,18 @@ fn author_should_get_tip() {
 			U256::from(1),
 			1000000,
 			U256::from(2_000_000_000),
-			Some(U256::from(1)),
+			// We set a tip high enough so the tip is non-zero in Substrate units.
+			Some(U256::from(1e9 as u128)),
 			None,
-			Vec::new(),
 			Vec::new(),
 		);
 		result.expect("EVM can be called");
 		let after_tip = EVM::account_basic(&author).0.balance;
-		assert_eq!(after_tip, (before_tip + 21000));
+		assert_eq!(
+			after_tip,
+			// We convert the tip to EVM units.
+			before_tip + (21000 * 1e9 as u128)
+		);
 	});
 }
 
@@ -1297,7 +1313,6 @@ fn issuance_after_tip() {
 			Some(U256::from(1)),
 			None,
 			Vec::new(),
-			Vec::new(),
 		);
 		result.expect("EVM can be called");
 		let after_tip = <Test as Config>::Currency::total_issuance();
@@ -1305,7 +1320,11 @@ fn issuance_after_tip() {
 		let base_fee: u64 = <Test as Config>::FeeCalculator::min_gas_price()
 			.0
 			.unique_saturated_into();
-		assert_eq!(after_tip, (before_tip - (base_fee * 21_000)));
+		let fee_evm = EvmBalance::from(base_fee * 21_000);
+		let fee_sub = <Test as Config>::BalanceConverter::into_substrate_balance(fee_evm)
+			.unwrap()
+			.into_u64_saturating();
+		assert_eq!(after_tip, before_tip - fee_sub);
 	});
 }
 
@@ -1324,7 +1343,6 @@ fn author_same_balance_without_tip() {
 			U256::default(),
 			None,
 			None,
-			Vec::new(),
 			Vec::new(),
 		);
 		let after_tip = EVM::account_basic(&author).0.balance;
@@ -1345,16 +1363,15 @@ fn refunds_should_work() {
 			H160::default(),
 			H160::from_str("1000000000000000000000000000000000000001").unwrap(),
 			Vec::new(),
-			U256::from(1),
+			U256::from(1e9 as u128),
 			1000000,
 			U256::from(2_000_000_000),
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
 		);
 		let (base_fee, _) = <Test as Config>::FeeCalculator::min_gas_price();
-		let total_cost = (U256::from(21_000) * base_fee) + U256::from(1);
+		let total_cost = (U256::from(21_000) * base_fee) + U256::from(1e9 as u128);
 		let after_call = EVM::account_basic(&H160::default()).0.balance;
 		assert_eq!(after_call, before_call - total_cost);
 	});
@@ -1378,17 +1395,16 @@ fn refunds_and_priority_should_work() {
 			H160::default(),
 			H160::from_str("1000000000000000000000000000000000000001").unwrap(),
 			Vec::new(),
-			U256::from(1),
+			U256::from(1e9 as u128),
 			1000000,
 			max_fee_per_gas,
 			Some(tip),
 			None,
 			Vec::new(),
-			Vec::new(),
 		);
 		let (base_fee, _) = <Test as Config>::FeeCalculator::min_gas_price();
 		let actual_tip = (max_fee_per_gas - base_fee).min(tip) * used_gas;
-		let total_cost = (used_gas * base_fee) + actual_tip + U256::from(1);
+		let total_cost = (used_gas * base_fee) + actual_tip + U256::from(1e9 as u128);
 		let after_call = EVM::account_basic(&H160::default()).0.balance;
 		// The tip is deducted but never refunded to the caller.
 		assert_eq!(after_call, before_call - total_cost);
@@ -1413,7 +1429,6 @@ fn call_should_fail_with_priority_greater_than_max_fee() {
 			U256::from(1_000_000_000),
 			Some(U256::from(tip)),
 			None,
-			Vec::new(),
 			Vec::new(),
 		);
 		assert!(result.is_err());
@@ -1441,7 +1456,6 @@ fn call_should_succeed_with_priority_equal_to_max_fee() {
 			U256::from(1_000_000_000),
 			Some(U256::from(tip)),
 			None,
-			Vec::new(),
 			Vec::new(),
 		);
 		assert!(result.is_ok());
@@ -1497,7 +1511,6 @@ fn runner_non_transactional_calls_with_non_balance_accounts_is_ok_without_gas_pr
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
 			false, // non-transactional
 			true,  // must be validated
 			None,
@@ -1534,7 +1547,6 @@ fn runner_non_transactional_calls_with_non_balance_accounts_is_err_with_gas_pric
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
 			false, // non-transactional
 			true,  // must be validated
 			None,
@@ -1558,7 +1570,6 @@ fn runner_transactional_call_with_zero_gas_price_fails() {
 			None,
 			None,
 			None,
-			Vec::new(),
 			Vec::new(),
 			true, // transactional
 			true, // must be validated
@@ -1584,7 +1595,6 @@ fn runner_max_fee_per_gas_gte_max_priority_fee_per_gas() {
 			Some(U256::from(2_000_000_000)),
 			None,
 			Vec::new(),
-			Vec::new(),
 			true, // transactional
 			true, // must be validated
 			None,
@@ -1601,7 +1611,6 @@ fn runner_max_fee_per_gas_gte_max_priority_fee_per_gas() {
 			Some(U256::from(1_000_000_000)),
 			Some(U256::from(2_000_000_000)),
 			None,
-			Vec::new(),
 			Vec::new(),
 			false, // non-transactional
 			true,  // must be validated
@@ -1628,7 +1637,6 @@ fn eip3607_transaction_from_contract() {
 			None,
 			None,
 			Vec::new(),
-			Vec::new(),
 			true,  // transactional
 			false, // not sure be validated
 			None,
@@ -1653,7 +1661,6 @@ fn eip3607_transaction_from_contract() {
 			None,
 			None,
 			None,
-			Vec::new(),
 			Vec::new(),
 			false, // non-transactional
 			true,  // must be validated
