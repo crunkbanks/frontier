@@ -24,8 +24,9 @@ use scale_info::TypeInfo;
 use sp_runtime::{
 	generic::{self, Preamble},
 	traits::{
-		self, Checkable, Dispatchable, ExtrinsicCall, ExtrinsicLike, ExtrinsicMetadata,
-		IdentifyAccount, LazyExtrinsic, MaybeDisplay, Member, TransactionExtension,
+		self, Checkable, Dispatchable, ExtensionVariant, ExtrinsicCall, ExtrinsicLike,
+		ExtrinsicMetadata, IdentifyAccount, InvalidVersion, LazyExtrinsic, MaybeDisplay, Member,
+		TransactionExtension,
 	},
 	transaction_validity::{InvalidTransaction, TransactionValidityError},
 	Debug, OpaqueExtrinsic,
@@ -153,7 +154,7 @@ where
 {
 	const VERSIONS: &'static [u8] =
 		generic::UncheckedExtrinsic::<Address, Call, Signature, Extension>::VERSIONS;
-	type TransactionExtensions = Extension;
+	type TransactionExtensionPipelines = ExtensionVariant<Extension, InvalidVersion>;
 }
 
 impl<Address, Call, Signature, Extension> ExtrinsicCall
@@ -202,11 +203,13 @@ where
 }
 
 #[cfg(feature = "serde")]
-impl<'a, Address: Decode, Signature: Decode, Call, Extension> serde::Deserialize<'a>
+impl<'a, Address, Signature, Call, Extension> serde::Deserialize<'a>
 	for UncheckedExtrinsic<Address, Call, Signature, Extension>
 where
-	Call: Decode + Dispatchable + DecodeWithMemTracking,
-	Extension: Decode + TransactionExtension<Call>,
+	Address: DecodeWithMemTracking,
+	Signature: DecodeWithMemTracking,
+	Call: Dispatchable + DecodeWithMemTracking,
+	Extension: TransactionExtension<Call> + DecodeWithMemTracking,
 {
 	fn deserialize<D>(de: D) -> Result<Self, D::Error>
 	where
