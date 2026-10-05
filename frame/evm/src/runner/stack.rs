@@ -53,8 +53,9 @@ use fp_evm::{
 use super::meter::StorageMeter;
 use crate::{
 	runner::Runner as RunnerT, AccountCodes, AccountCodesMetadata, AccountProvider,
-	AccountStorages, AddressMapping, BalanceOf, BlockHashMapping, Config, EnsureCreateOrigin,
-	Error, Event, FeeCalculator, OnChargeEVMTransaction, OnCreate, Pallet, RunnerError,
+	AccountStorages, AddressMapping, BalanceConverter, BalanceOf, BlockHashMapping, Config,
+	EnsureCreateOrigin, Error, Event, EvmBalance, FeeCalculator, OnChargeEVMTransaction, OnCreate,
+	Pallet, RunnerError,
 };
 
 #[cfg(feature = "forbid-evm-reentrancy")]
@@ -1394,11 +1395,17 @@ where
 	fn transfer(&mut self, transfer: Transfer) -> Result<(), ExitError> {
 		let source = T::AddressMapping::into_account_id(transfer.source);
 		let target = T::AddressMapping::into_account_id(transfer.target);
+
+		// The value is in EVM units; transfer it in Substrate units.
+		let value_sub =
+			T::BalanceConverter::into_substrate_balance(EvmBalance::new(transfer.value))
+				.ok_or(ExitError::OutOfFund)?;
+
 		T::Currency::transfer(
 			&source,
 			&target,
-			transfer
-				.value
+			value_sub
+				.into_u256()
 				.try_into()
 				.map_err(|_| ExitError::OutOfFund)?,
 			ExistenceRequirement::AllowDeath,

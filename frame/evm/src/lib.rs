@@ -213,6 +213,9 @@ pub mod pallet {
 		/// Weight information for extrinsics in this pallet.
 		type WeightInfo: WeightInfo;
 
+		/// Balance conversion between Substrate balances and EVM balances (decimals).
+		type BalanceConverter: BalanceConverter;
+
 		/// EVM config used in the module.
 		fn config() -> &'static EvmConfig {
 			&EVM_CONFIG
@@ -268,6 +271,7 @@ pub mod pallet {
 			type CreateOriginFilter = ();
 			type CreateInnerOriginFilter = ();
 			type WeightInfo = ();
+			type BalanceConverter = ();
 		}
 
 		impl FixedGasWeightMappingAssociatedTypes for TestDefaultConfig {
@@ -1053,11 +1057,15 @@ impl<T: Config> Pallet<T> {
 		let nonce = T::AccountProvider::account_nonce(&account_id);
 		let balance =
 			T::Currency::reducible_balance(&account_id, Preservation::Preserve, Fortitude::Polite);
+		let balance_sub =
+			SubstrateBalance::from(UniqueSaturatedInto::<u128>::unique_saturated_into(balance));
+		let balance_eth =
+			T::BalanceConverter::into_evm_balance(balance_sub).unwrap_or(EvmBalance::from(0u64));
 
 		(
 			Account {
 				nonce: U256::from(UniqueSaturatedInto::<u128>::unique_saturated_into(nonce)),
-				balance: U256::from(UniqueSaturatedInto::<u128>::unique_saturated_into(balance)),
+				balance: balance_eth.into(),
 			},
 			T::DbWeight::get().reads(2),
 		)
@@ -1122,9 +1130,14 @@ where
 			return Ok(None);
 		}
 		let account_id = T::AddressMapping::into_account_id(*who);
+
+		// The fee is in EVM units; withdraw it in Substrate units.
+		let fee_sub = T::BalanceConverter::into_substrate_balance(EvmBalance::new(fee))
+			.ok_or(Error::<T>::FeeOverflow)?;
+
 		let imbalance = C::withdraw(
 			&account_id,
-			fee.unique_saturated_into(),
+			fee_sub.into_u256().unique_saturated_into(),
 			WithdrawReasons::FEE,
 			ExistenceRequirement::AllowDeath,
 		)
@@ -1141,10 +1154,15 @@ where
 		if let Some(paid) = already_withdrawn {
 			let account_id = T::AddressMapping::into_account_id(*who);
 
+			// The corrected fee is in EVM units; the withdrawn amount is in Substrate units.
+			let corrected_fee_sub =
+				T::BalanceConverter::into_substrate_balance(EvmBalance::new(corrected_fee))
+					.unwrap_or(SubstrateBalance::from(0u64));
+
 			// Calculate how much refund we should return
 			let refund_amount = paid
 				.peek()
-				.saturating_sub(corrected_fee.unique_saturated_into());
+				.saturating_sub(corrected_fee_sub.into_u256().unique_saturated_into());
 			// refund to the account that paid the fees. If this fails, the
 			// account might have dropped below the existential balance. In
 			// that case we don't refund anything.
@@ -1175,7 +1193,12 @@ where
 				.same()
 				.unwrap_or_else(|_| C::NegativeImbalance::zero());
 
-			let (base_fee, tip) = adjusted_paid.split(base_fee.unique_saturated_into());
+			// The base fee is in EVM units; split it off in Substrate units.
+			let base_fee_sub = T::BalanceConverter::into_substrate_balance(EvmBalance::new(base_fee))
+				.unwrap_or(SubstrateBalance::from(0u64));
+
+			let (base_fee, tip) =
+				adjusted_paid.split(base_fee_sub.into_u256().unique_saturated_into());
 			// Handle base fee. Can be either burned, rationed, etc ...
 			OU::on_unbalanced(base_fee);
 			return Some(tip);
@@ -1214,9 +1237,14 @@ where
 			return Ok(None);
 		}
 		let account_id = T::AddressMapping::into_account_id(*who);
+
+		// The fee is in EVM units; withdraw it in Substrate units.
+		let fee_sub = T::BalanceConverter::into_substrate_balance(EvmBalance::new(fee))
+			.ok_or(Error::<T>::FeeOverflow)?;
+
 		let imbalance = F::withdraw(
 			&account_id,
-			fee.unique_saturated_into(),
+			fee_sub.into_u256().unique_saturated_into(),
 			Precision::Exact,
 			Preservation::Preserve,
 			Fortitude::Polite,
@@ -1234,10 +1262,15 @@ where
 		if let Some(paid) = already_withdrawn {
 			let account_id = T::AddressMapping::into_account_id(*who);
 
+			// The corrected fee is in EVM units; the withdrawn amount is in Substrate units.
+			let corrected_fee_sub =
+				T::BalanceConverter::into_substrate_balance(EvmBalance::new(corrected_fee))
+					.unwrap_or(SubstrateBalance::from(0u64));
+
 			// Calculate how much refund we should return
 			let refund_amount = paid
 				.peek()
-				.saturating_sub(corrected_fee.unique_saturated_into());
+				.saturating_sub(corrected_fee_sub.into_u256().unique_saturated_into());
 			// refund to the account that paid the fees.
 			let refund_imbalance = F::deposit(&account_id, refund_amount, Precision::BestEffort)
 				.unwrap_or_else(|_| Debt::<AccountIdOf<T>, F>::zero());
@@ -1248,7 +1281,12 @@ where
 				.same()
 				.unwrap_or_else(|_| Credit::<AccountIdOf<T>, F>::zero());
 
-			let (base_fee, tip) = adjusted_paid.split(base_fee.unique_saturated_into());
+			// The base fee is in EVM units; split it off in Substrate units.
+			let base_fee_sub = T::BalanceConverter::into_substrate_balance(EvmBalance::new(base_fee))
+				.unwrap_or(SubstrateBalance::from(0u64));
+
+			let (base_fee, tip) =
+				adjusted_paid.split(base_fee_sub.into_u256().unique_saturated_into());
 			// Handle base fee. Can be either burned, rationed, etc ...
 			OU::on_unbalanced(base_fee);
 			return Some(tip);
@@ -1338,5 +1376,107 @@ impl<T: frame_system::Config> AccountProvider for FrameSystemAccountProvider<T> 
 
 	fn remove_account(who: &Self::AccountId) {
 		let _ = frame_system::Pallet::<T>::dec_sufficients(who);
+	}
+}
+
+/// A balance in Substrate units (the decimals of `Config::Currency`).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct SubstrateBalance(U256);
+
+impl SubstrateBalance {
+	pub fn new(value: U256) -> Self {
+		SubstrateBalance(value)
+	}
+
+	pub fn into_u256(self) -> U256 {
+		self.0
+	}
+
+	pub fn into_u64_saturating(self) -> u64 {
+		if self.0 > U256::from(u64::MAX) {
+			u64::MAX
+		} else {
+			self.0.as_u64()
+		}
+	}
+}
+
+impl From<u64> for SubstrateBalance {
+	fn from(value: u64) -> Self {
+		SubstrateBalance(U256::from(value))
+	}
+}
+
+impl From<u128> for SubstrateBalance {
+	fn from(value: u128) -> Self {
+		SubstrateBalance(U256::from(value))
+	}
+}
+
+impl From<SubstrateBalance> for U256 {
+	fn from(value: SubstrateBalance) -> Self {
+		value.0
+	}
+}
+
+/// A balance in EVM units (wei, 18 decimals).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct EvmBalance(U256);
+
+impl EvmBalance {
+	pub fn new(value: U256) -> Self {
+		EvmBalance(value)
+	}
+
+	pub fn into_u256(self) -> U256 {
+		self.0
+	}
+
+	pub fn into_u64_saturating(self) -> u64 {
+		if self.0 > U256::from(u64::MAX) {
+			u64::MAX
+		} else {
+			self.0.as_u64()
+		}
+	}
+}
+
+impl From<u64> for EvmBalance {
+	fn from(value: u64) -> Self {
+		EvmBalance(U256::from(value))
+	}
+}
+
+impl From<u128> for EvmBalance {
+	fn from(value: u128) -> Self {
+		EvmBalance(U256::from(value))
+	}
+}
+
+impl From<EvmBalance> for U256 {
+	fn from(value: EvmBalance) -> Self {
+		value.0
+	}
+}
+
+/// Conversion between Substrate balances and EVM balances.
+pub trait BalanceConverter {
+	/// Convert from Substrate balance to EVM balance (U256) with correct decimals
+	fn into_evm_balance(value: SubstrateBalance) -> Option<EvmBalance>;
+
+	/// Convert from EVM (U256) balance to Substrate balance with correct decimals
+	fn into_substrate_balance(value: EvmBalance) -> Option<SubstrateBalance>;
+}
+
+/// The identity conversion: Substrate and EVM balances have the same decimals.
+impl BalanceConverter for () {
+	fn into_evm_balance(value: SubstrateBalance) -> Option<EvmBalance> {
+		Some(EvmBalance::from(
+			UniqueSaturatedInto::<u128>::unique_saturated_into(value.0),
+		))
+	}
+
+	fn into_substrate_balance(value: EvmBalance) -> Option<SubstrateBalance> {
+		Some(SubstrateBalance(value.0))
 	}
 }
