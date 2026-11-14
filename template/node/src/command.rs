@@ -121,22 +121,6 @@ pub fn run() -> sc_cli::Result<()> {
 						};
 						cmd.run(frontier_database_config)?;
 					}
-					crate::eth::BackendType::Sql => {
-						let db_path = db_config_dir.join("sql");
-						match std::fs::remove_dir_all(&db_path) {
-							Ok(_) => {
-								println!("{:?} removed.", &db_path);
-							}
-							Err(ref err) if err.kind() == std::io::ErrorKind::NotFound => {
-								eprintln!("{:?} did not exist.", &db_path);
-							}
-							Err(err) => {
-								return Err(
-									format!("Cannot purge `{db_path:?}` database: {err:?}").into()
-								)
-							}
-						};
-					}
 				};
 				cmd.run(config.database)
 			})

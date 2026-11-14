@@ -89,7 +89,6 @@ substrate-build-script-utils = { workspace = true }
 [features]
 default = [
 	"paritydb",
-	"sql",
 	"txpool",
 	"rpc-binary-search-estimate",
 ]
@@ -104,10 +103,6 @@ rocksdb = [
 ]
 paritydb = [
 	"frontier-template-runtime/with-paritydb-weights",
-]
-sql = [
-	"fc-db/sql",
-	"fc-mapping-sync/sql",
 ]
 txpool = ["fc-rpc/txpool"]
 rpc-binary-search-estimate = ["fc-rpc/rpc-binary-search-estimate"]

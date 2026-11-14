@@ -1,6 +1,6 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
-use std::{cell::RefCell, path::Path, sync::Arc, time::Duration};
+use std::{cell::RefCell, sync::Arc, time::Duration};
 
 use futures::{channel::mpsc, prelude::*};
 // Substrate
@@ -142,27 +142,6 @@ where
 			&config.database,
 			&db_config_dir(config),
 		)?)),
-		BackendType::Sql => {
-			let db_path = db_config_dir(config).join("sql");
-			std::fs::create_dir_all(&db_path).expect("failed creating sql db directory");
-			let backend = futures::executor::block_on(fc_db::sql::Backend::new(
-				fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
-					path: Path::new("sqlite:///")
-						.join(db_path)
-						.join("frontier.db3")
-						.to_str()
-						.unwrap(),
-					create_if_missing: true,
-					thread_count: eth_config.frontier_sql_backend_thread_count,
-					cache_size: eth_config.frontier_sql_backend_cache_size,
-				}),
-				eth_config.frontier_sql_backend_pool_size,
-				std::num::NonZeroU32::new(eth_config.frontier_sql_backend_num_ops_timeout),
-				storage_override.clone(),
-			))
-			.unwrap_or_else(|err| panic!("failed creating sql backend: {err:?}"));
-			FrontierBackend::Sql(Arc::new(backend))
-		}
 	};
 
 	let (import_queue, block_import) = build_import_queue(
@@ -470,7 +449,6 @@ where
 				sync: sync_service.clone(),
 				frontier_backend: match &*frontier_backend {
 					fc_db::Backend::KeyValue(b) => b.clone(),
-					fc_db::Backend::Sql(b) => b.clone(),
 				},
 				storage_override: storage_override.clone(),
 				block_data_cache: block_data_cache.clone(),

@@ -16,14 +16,12 @@ futures = { workspace = true }
 futures-timer = "3.0.3"
 log = { workspace = true }
 parking_lot = { workspace = true }
-tokio = { workspace = true, features = ["macros", "sync"], optional = true }
 # Substrate
 sc-client-api = { workspace = true }
 sc-utils = { workspace = true }
 sp-api = { workspace = true }
 sp-blockchain = { workspace = true }
 sp-consensus = { workspace = true, features = ["default"] }
-sp-core = { workspace = true, optional = true }
 sp-runtime = { workspace = true }
 # Frontier
 fc-db = { workspace = true, default-features = false }
@@ -34,9 +32,8 @@ fp-rpc = { workspace = true, features = ["default"] }
 [dev-dependencies]
 ethereum = { workspace = true }
 scale-codec = { workspace = true }
-sqlx = { workspace = true, features = ["runtime-tokio-native-tls", "sqlite"] }
 tempfile = "3.21.0"
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 # Substrate
 sc-block-builder = { workspace = true }
 sc-client-db = { workspace = true }
@@ -50,10 +47,5 @@ fp-storage = { workspace = true, features = ["default"] }
 frontier-template-runtime = { workspace = true, features = ["default"] }
 
 [features]
-default = ["sql"]
+default = []
 rocksdb = ["fc-db/rocksdb"]
-sql = [
-	"tokio",
-	"sp-core",
-	"fc-db/sql",
-]
