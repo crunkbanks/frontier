@@ -30,7 +30,6 @@ fp-storage = { workspace = true, features = ["default"] }
 
 [dev-dependencies]
 futures = { workspace = true }
-maplit = "1.0.2"
 tempfile = "3.21.0"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Substrate
